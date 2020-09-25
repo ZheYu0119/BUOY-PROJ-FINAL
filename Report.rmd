@@ -1,6 +1,6 @@
 ---
-title: "Report"
-author: "Yu"
+title: "Report of Buoy Project"
+author: "Zhe Yu"
 date: "2020/9/25"
 output: pdf_document
 ---
@@ -10,16 +10,17 @@ knitr::opts_chunk$set(echo = TRUE)
 library(stringr)
 library(tidyverse)
 library(lubridate)
+library(rstanarm)
 MR <- read.csv("MR.csv", header = T)
 MR_DATE <- read.csv("MR_DATE.csv", header = T)
 ```
 
 ## Introduction
 
-In this buoy project we aim to find whether there is a evidence of global warming, so we intended to use the data in National Data Buoy Center from 1987 to 2016 to see if there are upward trends with air temperature and water temperature as time goes by. We have three steps:
-* Import and clean data
-* Transform data and make analysis
-* Draw a conclusion
+In this buoy project we aim to find whether there is an evidence of global warming, so we intended to use the data in National Data Buoy Center from 1987 to 2016 to see if there are upward trends with air temperature and water temperature as time goes by. We have three steps:
+*  Import and clean data
+*  Transform data and make analysis
+*  Draw a conclusion
 
 ## Import and clean data
 
@@ -72,22 +73,23 @@ for (i in 1:30){
     MR <- rbind.data.frame(MR, file)
   }
 }
-```
 
-Then I got the data frame MR.csv
-
-```{r echo = FALSE}
-print(MR)
-```
-
-Secondly, I noticed that there are some errors in column ATMP and WTMP, so I throw out all the rows which ATMP and WTMP are larger than 100.And then transfer the date and time into posix numbers.
-
-```{r}
 #select columns that are not 99, 999
 MR <- MR[,c(1:7,12:14)]
 
 #filter rows that ATMP and WTMP are larger than 100
 MR <- filter(MR,MR$ATMP<100&MR$WTMP<100)
+```
+
+Then I got the data frame MR.csv
+
+```{r echo = FALSE}
+summary(MR)
+```
+
+For in this data frame, the date information is separated into different columns, so I use the lubricate package to transfer these data into posix type.
+
+```{r}
 
 #combine all the time into one column using lubridate package
 MR_DATE <- MR %>%
@@ -104,18 +106,23 @@ MR_DATE <- MR_DATE[,new_cols]
 Then I got the MR_DATE.csv
 
 ```{R echo=FALSE}
-print(MR_DATE)
+summary(MR_DATE)
 ```
 
 ## Transform data and make analysis
 
-Firstly, I choose the data at 12:00:00 each day and become a new data frame.
+For there are too many data to draw a plot so I will reduce the amount of data by selecting the data at 12:00:00 each day and become a new data frame.
 
-```{r}
+```{r include=FALSE}
 MR_DAY <- filter(MR,MR$hh==12)
 MR_DAY <- MR_DAY %>%
   mutate(DATETIME = make_datetime(YYYY,MM,DD,hh))
 ```
+
+Next I draw two plot:(a)Air Temperature vs Time. (b)Water Temperature vs Time.
+And fit a linear regression model.
+As can be seen that the slope is really small so I add horizontal lines to make it more visible.
+
 ```{r}
 ggplot()+
   geom_point(aes(MR_DAY$DATETIME,MR_DAY$ATMP),alpha=0.2)+
@@ -130,13 +137,51 @@ ggplot(data=)+
   labs(title="Water Temperature vs Time",x="Time",y="Water Temperature")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+But the density of dots in those two plots are too high so it is a little bit dirty. Thus I choose using the mean value to draw another two plots.
 
+```{r}
+mean_atemp <- rep(NA,28)
+for (i in 1:28){
+  file2 <- filter(MR, MR$YYYY==1987+i)
+  mean_atemp[i] <- mean(file2$ATMP)
+}
 
+mean_wtemp <- rep(NA,28)
+for (i in 1:28){
+  file2 <- filter(MR, MR$YYYY==1987+i)
+  mean_wtemp[i] <- mean(file2$WTMP)
+}
+```
+```{r}
+ggplot(mapping=aes(1988:2015,mean_atemp))+
+  geom_point()+
+  geom_smooth(method=lm)+  
+  labs(title="Yearly Air Temperature vs Time",x="Time",y="Air Temperature")
+ggplot(mapping=aes(1988:2015,mean_wtemp))+
+  geom_point()+
+  geom_smooth(method=lm)+  
+  labs(title="Yearly Water Temperature vs Time",x="Time",y="Water Temperature")
+```
 
+It is much clear than the plots before!
 
+## Conclusion
 
+Using the linear regression model gets the coefficients.
 
+```{r}
+model_Atemp <- data.frame(1988:2015,mean_atemp)
+colnames(model_Atemp) <- c("year","mean_atemp")
+fit_Atemp <- stan_glm(mean_atemp~year,data=model_Atemp,refresh=0)
+coef(fit_Atemp)
+```
+```{r}
+model_Wtemp <- data.frame(1988:2015,mean_wtemp)
+colnames(model_Wtemp) <- c("year","mean_wtemp")
+fit_Wtemp <- stan_glm(mean_wtemp~year,data=model_Wtemp,refresh=0)
+coef(fit_Wtemp)
+```
+It is clear that by each year, both air temperature and water temperature increase no more than 0.01 celsius degree, although it is a small number but also an evidence of global warming.
 
 
 
